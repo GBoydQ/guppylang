@@ -90,6 +90,7 @@ from guppylang_internals.checker.errors.type_errors import (
     UnaryOperatorNotDefinedError,
     WrongNumberOfArgsError,
 )
+from guppylang_internals.checker.util import zonk_const_ty
 from guppylang_internals.definition.common import Definition
 from guppylang_internals.definition.parameter import ParamDef
 from guppylang_internals.definition.ty import TypeDef
@@ -141,14 +142,14 @@ from guppylang_internals.tys.builtin import (
     option_type,
     string_type,
 )
-from guppylang_internals.tys.const import Const, ConstValue
+from guppylang_internals.tys.const import Const, ConstValue, ExistentialConstVar
 from guppylang_internals.tys.param import (
     ConstParam,
     TypeParam,
     check_all_args,
 )
 from guppylang_internals.tys.parsing import arg_from_ast
-from guppylang_internals.tys.subst import Inst, Subst, Substituter
+from guppylang_internals.tys.subst import Inst, Subst
 from guppylang_internals.tys.ty import (
     EnumType,
     ExistentialTypeVar,
@@ -1104,13 +1105,29 @@ def type_check_args(
     # Check whether we have found instantiations for all unification variables occurring
     # in the input types
     for inp in func_ty.inputs:
-        if not set.issubset(inp.ty.unsolved_vars, subst.keys()):
+        unsolved_vars: set[ExistentialVar] = set()
+        # If `v` is an `ExistentialConstVar`, whose type's support is in the
+        # substitution, we need to substitute the type before looking up `v`.
+        for var in inp.ty.unsolved_vars:
+            if isinstance(var, ExistentialConstVar):
+                unsolved_vars.add(zonk_const_ty(var, subst))
+            else:
+                unsolved_vars.add(var)
+        if not set.issubset(unsolved_vars, subst.keys()):
             raise GuppyTypeInferenceError(
                 TypeInferenceError(node, inp.ty.substitute(subst))
             )
 
     # We also have to check that we found instantiations for all vars in the return type
-    if not set.issubset(func_ty.output.unsolved_vars, subst.keys()):
+    unsolved_vars = set()
+    for var in func_ty.output.unsolved_vars:
+        # If `v` is an `ExistentialConstVar`, whose type's support is in the
+        # substitution, we need to substitute the type before looking up `v`.
+        if isinstance(var, ExistentialConstVar):
+            unsolved_vars.add(zonk_const_ty(var, subst))
+        else:
+            unsolved_vars.add(var)
+    if not set.issubset(unsolved_vars, subst.keys()):
         raise GuppyTypeInferenceError(
             TypeInferenceError(node, func_ty.output.substitute(subst))
         )
