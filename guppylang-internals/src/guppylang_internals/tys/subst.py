@@ -20,6 +20,9 @@ from guppylang_internals.tys.ty import (
 )
 from guppylang_internals.tys.var import ExistentialVar
 
+# INVARIANT: An `ExistentialConstVar` key will not contain an `ExistentialTypeVar`
+# that is present in the substitution. Hence, existential consts, must be updated
+# with respect to the substitution, or "zonked", before they are used as keys.
 Subst = dict[ExistentialVar, Type | Const]
 Inst = Sequence[Argument]
 PartialInst = Sequence["Argument | None"]
