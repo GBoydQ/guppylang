@@ -142,9 +142,13 @@ from guppylang_internals.tys.builtin import (
     string_type,
 )
 from guppylang_internals.tys.const import Const, ConstValue
-from guppylang_internals.tys.param import ConstParam, TypeParam, check_all_args
+from guppylang_internals.tys.param import (
+    ConstParam,
+    TypeParam,
+    check_all_args,
+)
 from guppylang_internals.tys.parsing import arg_from_ast
-from guppylang_internals.tys.subst import Inst, Subst
+from guppylang_internals.tys.subst import Inst, Subst, Substituter
 from guppylang_internals.tys.ty import (
     EnumType,
     ExistentialTypeVar,
@@ -1334,12 +1338,20 @@ def check_all_solved(
     Returns an instantiation of all free variables, or emits a user error if some are
     not solved.
     """
+    inst = []
     for v in free_vars:
-        if v not in subst:
+        # If `v` is an `ExistentialConstVar`, whose type's support is in the
+        # substitution, we need to substitute the type before looking up `v`.
+        if isinstance(v, ExistentialConstVar):
+            v = zonk_const_ty(v, subst)
+        if v in subst:
+            inst.append(subst[v].to_arg())
+        else:
             err = ParameterInferenceError(loc, v.display_name)
             err.add_sub_diagnostic(ParameterInferenceError.SignatureHint(None, func_ty))
             raise GuppyTypeInferenceError(err)
-    return [subst[v].to_arg() for v in free_vars]
+
+    return inst
 
 
 def check_inst(func_ty: FunctionType, inst: Inst, node: AstNode) -> None:
