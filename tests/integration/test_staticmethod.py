@@ -307,3 +307,28 @@ def test_staticmethod_protocol_self(validate):
         hasmyproto(t)
 
     validate(main.compile())
+
+
+def test_protocol_self_output(validate):
+
+    @guppy.protocol
+    class Default:
+        @guppy.require
+        def foo(self) -> Self: ...
+
+    @guppy.struct(frozen=True)
+    class Test:
+        @guppy
+        def foo(self) -> "Test":
+            return Test()
+
+    @guppy
+    def hasmyproto(t: Default) -> None:
+        t.foo()
+
+    @guppy
+    def main() -> None:
+        t = Test()
+        hasmyproto(t)
+
+    validate(main.compile())

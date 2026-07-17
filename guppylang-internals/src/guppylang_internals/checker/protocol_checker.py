@@ -60,7 +60,7 @@ ImplProof: TypeAlias = ConcreteImplProof | AssumptionImplProof
 
 
 def _instantiate_self(
-    proto_func: FunctionType, proto_inst: ProtocolInst, impl_ty: Type
+    proto_func: FunctionType, proto_inst: ProtocolInst, impl_ty: Type, self_arg: Type
 ) -> FunctionType:
     """Given a generic protocol method signature, `proto_func`, instantiate its
     variables, by instantiating the first (self) arg to `impl_ty` and the other type
@@ -68,13 +68,16 @@ def _instantiate_self(
 
     Invariant: proto_func must have non-zero inputs, and the first input must be a
     BoundVar representing the "self" of the protocol method.
+    TODO CHANGE THIS DOCSTRING
     """
-    self_ty = proto_func.inputs[0].ty
+    self_ty = self_arg
     assert isinstance(self_ty, BoundTypeVar)
     for proto_bound in self_ty.implements:
         if proto_bound.def_id == proto_inst.def_id:
             # A mutable PartialInst
             partial_inst: list[Argument | None] = [None for _ in proto_func.params]
+            if len(partial_inst) == 0:
+                return proto_func
             # Instantiate all self type occurrences in protocol methods with the type we
             # assume is implementing the protocol.
             for proto_arg, bound_arg in zip(
@@ -85,6 +88,7 @@ def _instantiate_self(
                         partial_inst[idx] = proto_arg
                     case ConstArg(const=BoundConstVar(idx=idx)):
                         partial_inst[idx] = proto_arg
+            # staticmethod may not actually involve self_ty so this can error
             partial_inst[self_ty.idx] = impl_ty.to_arg()
             return proto_func.instantiate_partial(partial_inst)
     from guppylang_internals.engine import ENGINE
@@ -104,6 +108,10 @@ def check_protocol(
     # Invariant: `ty` and `protocol` might have unsolved variables.
     protocol_def = ENGINE.get_checked(protocol.def_id, protocol.type_args)
     assert isinstance(protocol_def, CheckedProtocolDef)
+
+    self_args = [param.to_bound() for param in protocol_def.params]
+    proto_inst = protocol_def.check_instantiate(self_args, loc=None)
+    self_arg = BoundTypeVar("self", len(self_args), True, True, (proto_inst,))
 
     # If `ty` is a bound type variable, we try to handle the case
     # `def foo[T, MyProto: Proto[T]](MyProto, ...) -> ...`
@@ -144,12 +152,12 @@ def check_protocol(
     for name in protocol_def.member_defs:
         proto_sig = protocol_def.member_sig(name)
         if (
-            len(proto_sig.inputs) > 0 and not protocol_def.member_defs[name].is_static
-        ):  # staticmethods assumed not to have a self arg
-            if isinstance(proto_sig.inputs[0].ty, BoundTypeVar):
-                proto_sig = _instantiate_self(proto_sig, protocol, ty)
-            else:
-                raise GuppyError(FirstArgNotProtocol(None, protocol_def.name))
+            len(proto_sig.inputs) > 0
+            and not protocol_def.member_defs[name].is_static
+            and not isinstance(proto_sig.inputs[0].ty, BoundTypeVar)
+        ):
+            raise GuppyError(FirstArgNotProtocol(None, protocol_def.name))
+        proto_sig = _instantiate_self(proto_sig, protocol, ty, self_arg)
         func = ENGINE.get_instance_func(ty, name)
         if not func:
             loc = loc or ENGINE.get_parsed(protocol_def.member_defs[name].id).defined_at
