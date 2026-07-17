@@ -42,6 +42,7 @@ from guppylang_internals.tys.ty import (
     FunctionType,
     InputFlags,
     NoneType,
+    Type,
     UnitaryFlags,
     unify,
 )
@@ -377,6 +378,29 @@ def check_signature(
                 raise GuppyError(MissingArgAnnotationError(inp))
             input = parse_function_arg_annotation(ty_ast, inp.arg, ctx)
         inputs.append(input)
+
+    # infer self type for ouput
+    if has_parent and def_id is not None:
+        self_def_id = DEF_STORE.type_member_parents[def_id]
+        self_defn_untyped = ENGINE.get_checked(self_def_id, mono_args=())
+        if isinstance(self_defn_untyped, ProtocolDef):
+            self_defn = cast(
+                "CheckedProtocolDef",
+                ENGINE.get_checked(self_def_id, mono_args=()),
+            )
+            assert isinstance(self_defn, CheckedProtocolDef)
+            for p in self_defn.params:
+                ctx.param_var_mapping[p.name] = p
+            self_ty = parse_self_output_proto(self_defn, ctx, func_def.returns)
+        else:
+            self_defn = cast("TypeDef", ENGINE.get_checked(self_def_id, mono_args=()))
+            assert isinstance(self_defn, TypeDef)
+            if self_defn.params is not None:
+                self_args = [param.to_bound() for param in self_defn.params]
+                self_ty = self_defn.check_instantiate(self_args, loc=func_def.returns)
+
+        ctx = replace(ctx, self_ty=self_ty)
+
     output = type_from_ast(func_def.returns, replace(ctx, is_output=True))
     return FunctionType(
         inputs,
@@ -425,6 +449,28 @@ def parse_self_arg(arg: ast.arg, self_defn: TypeDef, ctx: TypeParsingCtx) -> Fun
         raise GuppyError(InvalidSelfError(arg.annotation, arg.arg, str(self_ty_head)))
 
     return check_function_arg(user_ty, user_flags, arg, arg.arg, ctx)
+
+
+def parse_self_output_proto(
+    self_defn: "CheckedProtocolDef", ctx: TypeParsingCtx, loc: AstNode
+) -> Type:
+    # The generic params inherited from the parent type (those in `self_defn.params`)
+    # should appear first in the parameter list. The other ones have to be shifted one
+    # place to account for the `self` parameter we'll insert.
+
+    # REMOVE THIS DUPLICATION
+    for name, param in ctx.param_var_mapping.items():
+        if param in self_defn.params:
+            continue
+        ctx.param_var_mapping[name] = param.with_idx(
+            param.idx + len(self_defn.params) + 1
+        )
+
+    ctx.param_var_mapping.update({param.name: param for param in self_defn.params})
+    self_args = [param.to_bound() for param in self_defn.params]
+    proto_inst = self_defn.check_instantiate(self_args, loc=loc)
+    self_arg = BoundTypeVar("self", len(self_args), True, True, (proto_inst,))
+    return self_arg
 
 
 def parse_self_arg_proto(
