@@ -73,6 +73,25 @@ class Range:
         self._next += self._step
         return some((actual_next, self))
 
+    @guppy
+    @no_type_check
+    def range_len(self) -> int:
+        if self._step > 0:
+            return (self._stop - self._next + self._step - 1) // self._step
+        elif self._step < 0:
+            return (self._next - self._stop - self._step - 1) // (-self._step)
+        else:
+            return 0
+
+    @guppy
+    @no_type_check
+    def reverse(self: Self @ owned) -> Self:
+        n = self.range_len()
+        a = self._next + (n - 1) * self._step
+        b = self._next - self._step
+        c = -self._step
+        return Range(a, b, c)
+
 
 @guppy
 @no_type_check

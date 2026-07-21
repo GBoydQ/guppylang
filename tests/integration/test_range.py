@@ -78,3 +78,40 @@ def test_static_generic_size(validate):
         r2: SizedIter[Range, 0] = foo()
 
     validate(main.compile_function())
+
+
+def test_range_reverse(run_int_fn):
+    @guppy
+    def stop(stop: int) -> int:
+        total = 0
+        for x in range(stop).reverse():
+            total += x + 100  # Make the initial 0 obvious
+        return total
+
+    @guppy
+    def start(start: int, stop: int) -> int:
+        total = 0
+        for x in range(start, stop).reverse():
+            total += x + 100
+        return total
+
+    @guppy
+    def step(start: int, stop: int, step: int) -> int:
+        total = 0
+        for x in range(start, stop, step).reverse():
+            total += x + 100
+        return total
+
+    def expected(r) -> int:
+        return sum(x + 100 for x in r)
+
+    run_int_fn(stop, args=[5], expected=expected(reversed(builtins.range(5))))
+    run_int_fn(stop, args=[-3], expected=expected(reversed(builtins.range(-3))))
+    run_int_fn(start, args=[2, 7], expected=expected(reversed(builtins.range(2, 7))))
+    run_int_fn(start, args=[-2, 5], expected=expected(reversed(builtins.range(-2, 5))))
+    run_int_fn(
+        step, args=[1, 5, 2], expected=expected(reversed(builtins.range(1, 5, 2)))
+    )
+    run_int_fn(
+        step, args=[5, -2, -1], expected=expected(reversed(builtins.range(5, -2, -1)))
+    )
