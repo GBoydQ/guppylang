@@ -1,4 +1,6 @@
-from guppylang.std.builtins import Daggerable
+from guppylang.std.quantum import discard_array
+from guppylang import array, qubit
+from guppylang.std.builtins import Daggerable, nat
 from collections.abc import Callable
 
 from guppylang.decorator import guppy
@@ -54,9 +56,6 @@ def test_struct_generic(validate):
 
 
 def test_higher_order(validate):
-    from guppylang.std.builtins import array, nat
-    from guppylang.std.quantum import qubit, discard_array
-
     @guppy
     def higher_order[n: nat](
         qs: array[qubit, n], func: Callable[[array[qubit, n]], None]
@@ -77,9 +76,6 @@ def test_higher_order(validate):
 
 
 def test_higher_order_daggerable(validate):
-    from guppylang.std.builtins import array, nat
-    from guppylang.std.quantum import qubit, discard_array
-
     @guppy
     def higher_order[n: nat](
         qs: array[qubit, n], func: Daggerable[[array[qubit, n]], None]
